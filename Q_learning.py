@@ -6,9 +6,9 @@ from IPython.display import clear_output
 import matplotlib.pyplot as plt
 import os
 
-np.random.seed(5)  # reproducible
+np.random.seed(2)  # reproducible
 
-N_STATES = 11   # the size of the 2 dimensional world
+N_STATES = 14   # the size of the 2 dimensional world
 ACTIONS = ['left', 'right', 'up', 'down']     # available actions
 EPSILON = 0.4   # greedy police
 EPSILON_DECAY = 0.014  # Adjust this rate to control the decay speed
@@ -25,31 +25,95 @@ def build_q_table(n_states, actions):
         np.zeros((n_states*n_states, len(actions))),     # q_table initial values
         columns=actions,    
     )
+
     return table
 
+#Maze generator that creates a random maze with a fairly direct path from start to goal
+
+# def generate_maze(n_states):
+#     #Generate an empty maze
+#     maze = []
+
+#     #Ensure there's a path from start to goal
+#     path = set()
+#     x, y = 0, 0
+#     while x < n_states - 1 or y < n_states - 1:
+#         if np.random.rand() > 0.5 and x < n_states - 1:
+#             x += 1
+#         elif y < n_states - 1:
+#             y += 1
+#         path.add((x, y))
+
+#     #Add obstacles randomly
+      #Need to tune this number depending on n_states !!!
+#     num_obstacles = n_states * 10
+
+#     while len(maze) < num_obstacles:
+#         obstacle = (np.random.randint(0, n_states), np.random.randint(0, n_states))
+#         if obstacle not in path and obstacle != (0, 0) and obstacle not in maze:
+#             maze.append(obstacle)
+
+#     return maze
+
+
+
+
+#Maze generator that uses a dfs to create a long, winding path from start to goal
+
 def generate_maze(n_states):
-    #Generate an empty maze
-    maze = []
+    # Initialize the grid, marking all cells as obstacles initially
+    maze = -np.ones((n_states, n_states), dtype=int)
+    visited = np.zeros((n_states, n_states), dtype=bool)
 
-    #Ensure there's a path from start to goal
-    path = set()
-    x, y = 0, 0
-    while x < n_states - 1 or y < n_states - 1:
-        if np.random.rand() > 0.5 and x < n_states - 1:
-            x += 1
-        elif y < n_states - 1:
-            y += 1
-        path.add((x, y))
+    directions = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # Possible movements: down, right, up, left
 
-    #Add obstacles randomly
-    num_obstacles = n_states * 5
+    obstacles = []
 
-    while len(maze) < num_obstacles:
-        obstacle = (np.random.randint(0, n_states), np.random.randint(0, n_states))
-        if obstacle not in path and obstacle != (0, 0) and obstacle not in maze:
-            maze.append(obstacle)
+    def make_path(x, y):
+        if x == n_states - 1 and y == n_states - 1:  # If we've reached the bottom right corner
+            visited[x, y] = True
+            maze[x, y] = 0  # Mark as part of the path
+            return True
 
-    return maze
+        if not (0 <= x < n_states) or not (0 <= y < n_states) or visited[x, y]:
+            return False  # Out of bounds or already visited
+
+        visited[x, y] = True  # Mark as visited
+        maze[x, y] = 0  # Mark as part of the path temporarily
+
+        np.random.shuffle(directions)  # Shuffle directions to randomize the path
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            if make_path(nx, ny):
+                return True  # Path successful
+
+        maze[x, y] = -1  # Backtrack: mark as obstacle if no path forward
+        return False
+
+    make_path(0, 0)  # Start pathing from the top-left corner
+
+    #add some random path cells
+    for i in range(n_states):
+        for j in range(n_states):
+                if np.random.rand() < 0.2:
+                    maze[i, j] = 0
+
+                if maze[i,j]==-1:
+                    obstacles.append((i,j))
+                    
+
+    # Ensure start and goal are clear
+    maze[0, 0] = 0  # Start
+    maze[n_states - 1, n_states - 1] = 0  # Goal
+
+    # print(maze)
+    # time.sleep(5)
+    # print(obstacles)
+    # time.sleep(5)
+
+    return obstacles
+
+
 
 
 
@@ -203,7 +267,7 @@ def rl():
             step_counter += 1
         steps_over_time.append(step_counter)
 
-    print(EPSILON)
+    #print(EPSILON)
 
     return q_table, steps_over_time
 
