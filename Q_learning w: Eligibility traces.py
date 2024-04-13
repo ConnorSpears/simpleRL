@@ -8,14 +8,15 @@ import os
 
 np.random.seed(2)  # reproducible
 
-N_STATES = 13   # the size of the 2 dimensional world
+N_STATES = 10  # the size of the 2 dimensional world
 ACTIONS = ['left', 'right', 'up', 'down']     # available actions
 EPSILON = 0.4   # greedy police
 EPSILON_DECAY = 0.014  # Adjust this rate to control the decay speed
 MAX_EPSILON = 0.999 #Maximum value of epsilon (min exploration rate is 1%)
 ALPHA = 0.06     # learning rate
-GAMMA = 1    # discount factor
-MAX_EPISODES = 2000   # maximum episodes
+GAMMA = 0.8   # discount factor
+MAX_EPISODES = 1000   # maximum episodes
+LAMBDA = 0.95  # Eligibility trace decay factor
 FRESH_TIME = 0.3   # fresh time for one move
 
 
@@ -26,6 +27,13 @@ def build_q_table(n_states, actions):
         columns=actions,    
     )
 
+    return table
+
+def build_eligibility_table(n_states, actions):
+    table = pd.DataFrame(
+        np.zeros((n_states*n_states, len(actions))),  # Eligibility trace table
+        columns=actions,
+    )
     return table
 
 #Maze generator that creates a random maze with a fairly direct path from start to goal
@@ -125,9 +133,11 @@ def choose_action(X,Y, q_table):
     state_actions = q_table.iloc[_S, :]
     if (np.random.uniform() > EPSILON) or ((state_actions == 0).all()):  # act non-greedy or state-action have no value
         action_name = np.random.choice(ACTIONS)
+        is_exploratory = True
     else:   # act greedy
         action_name = state_actions.idxmax()    
-    return action_name
+        is_exploratory = False
+    return action_name, is_exploratory
 
 
 def get_env_feedback(X,Y, A,maze):
@@ -216,20 +226,16 @@ def update_env(X, Y, episode, step_counter,maze):
 
 
 def rl():
-    global EPSILON
-    global EPSILON_DECAY
-    # main part of RL loop
+    global EPSILON, EPSILON_DECAY
     steps_over_time = []
     q_table = build_q_table(N_STATES, ACTIONS)
+    e_table = build_eligibility_table(N_STATES, ACTIONS)
     maze = generate_maze(N_STATES)
+
     for episode in range(MAX_EPISODES):
-
         step_counter = 0
-        X = 0
-        Y = 0
+        X, Y = 0, 0
         is_terminated = False
-
-        #scheduled decrease in exploration rate
 
         if episode%10 == 0:
           #Decrease exploitation rate
@@ -242,32 +248,52 @@ def rl():
           os.system('clear')
           print(episode)
 
-        if episode>=1998:
+        if episode>=998:
           update_env(X,Y, episode, step_counter,maze)
+
         while not is_terminated:
-
-            A = choose_action(X,Y, q_table)
-            X_,Y_, R = get_env_feedback(X,Y, A,maze)  # take action & get next state and reward
-            S = X*N_STATES + Y
-            q_predict = q_table.loc[S, A]
-            if X_ != 'terminal':
-              S_ = X_*N_STATES + Y_
+            S = X * N_STATES + Y
+            A, is_exploratory = choose_action(X, Y, q_table)
+            X_, Y_, R = get_env_feedback(X, Y, A, maze)
 
             if X_ != 'terminal':
-                q_target = R + GAMMA * q_table.iloc[S_, :].max()   # next state is not terminal
+                S_ = X_ * N_STATES + Y_
+                q_target = R + GAMMA * q_table.iloc[S_, :].max()
             else:
-                q_target = R     # next state is terminal
-                is_terminated = True    # terminate this episode
+                q_target = R
+                is_terminated = True
 
-            q_table.loc[S, A] += ALPHA * (q_target - q_predict)  # update
-            X = X_  # move to next state
-            Y = Y_
-            if episode>=1998:
-              update_env(X,Y, episode, step_counter+1,maze)
+            q_predict = q_table.loc[S, A]
+            error = q_target - q_predict
+
+            # Eligibility trace update for the action taken
+            e_table.loc[S, A] += 1
+
+            # Q-table update
+            q_table += ALPHA * error * e_table
+
+            # print("State: ", X, Y)
+            #print("Action taken: ", A)
+            # print("Reward: ", R)
+            # print("e_table: ")
+            # print(e_table)
+            # print("q_table: ")
+            # print(q_table)
+
+
+            # Manage eligibility traces
+            if is_exploratory:
+                e_table = build_eligibility_table(N_STATES, ACTIONS)  # Reset traces after exploratory move
+            else:
+                e_table *= GAMMA * LAMBDA  # Decay eligibility traces for all state-action pairs
+
+            X, Y = X_, Y_
             step_counter += 1
-        steps_over_time.append(step_counter)
 
-    #print(EPSILON)
+            if episode>=998:
+                update_env(X,Y, episode, step_counter,maze)
+
+        steps_over_time.append(step_counter)
 
     return q_table, steps_over_time
 
